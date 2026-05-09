@@ -408,8 +408,9 @@ function App() {
 
         <section className="setup-card" aria-label="Firebase setup notice">
           <p className="setup-error">
-            Missing Firebase config. Create a <strong>.env</strong> file with the Vite Firebase
-            variables, then restart the dev server.
+            Missing Firebase config. For local development, create a <strong>.env</strong> file with
+            the Vite Firebase variables. For Vercel, add the same <strong>VITE_FIREBASE_*</strong>
+            values in the project Environment Variables settings, then redeploy.
           </p>
         </section>
       </main>
