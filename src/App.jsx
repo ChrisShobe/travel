@@ -10,7 +10,7 @@ import DatePage from './pages/DatePage'
 import PlannerPage from './pages/PlannerPage'
 import DayPage from './pages/DayPage'
 import Header from './components/Header'
-import { auth, db, googleProvider, hasFirebaseConfig } from './lib/firebase'
+import { auth, authPersistenceReady, db, googleProvider, hasFirebaseConfig } from './lib/firebase'
 import { listenToUserTripData, saveUserTripData } from './lib/tripStore'
 
 function createDateKey(year, monthIndex, day) {
@@ -292,6 +292,7 @@ function App() {
 
     try {
       setFirebaseError('')
+      await authPersistenceReady
       const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
 
       if (isLocalhost) {

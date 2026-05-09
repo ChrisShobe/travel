@@ -1,5 +1,5 @@
 import { initializeApp, getApp, getApps } from 'firebase/app'
-import { browserLocalPersistence, getAuth, initializeAuth, GoogleAuthProvider } from 'firebase/auth'
+import { browserLocalPersistence, getAuth, setPersistence, GoogleAuthProvider } from 'firebase/auth'
 import { getFirestore } from 'firebase/firestore'
 
 const firebaseConfig = {
@@ -15,17 +15,8 @@ export const hasFirebaseConfig = Object.values(firebaseConfig).every(Boolean)
 
 const app = hasFirebaseConfig ? (getApps().length > 0 ? getApp() : initializeApp(firebaseConfig)) : null
 
-let auth = null
-
-if (app) {
-  try {
-    auth = initializeAuth(app, { persistence: browserLocalPersistence })
-  } catch (error) {
-    auth = getAuth(app)
-  }
-}
-
-export { auth }
+export const auth = app ? getAuth(app) : null
+export const authPersistenceReady = auth ? setPersistence(auth, browserLocalPersistence).catch(() => undefined) : Promise.resolve()
 export const db = app ? getFirestore(app) : null
 
 export const googleProvider = new GoogleAuthProvider()
