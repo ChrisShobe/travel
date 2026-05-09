@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { onAuthStateChanged, signInWithPopup, signInWithRedirect, signOut } from 'firebase/auth'
+import {
+  getRedirectResult,
+  onAuthStateChanged,
+  signInWithPopup,
+  signInWithRedirect,
+  signOut,
+} from 'firebase/auth'
 import DatePage from './pages/DatePage'
 import PlannerPage from './pages/PlannerPage'
 import DayPage from './pages/DayPage'
@@ -167,6 +173,12 @@ function App() {
       return undefined
     }
 
+    getRedirectResult(auth).catch((error) => {
+      if (error instanceof Error) {
+        setFirebaseError(error.message)
+      }
+    })
+
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setAuthUser(user)
       setAuthReady(true)
@@ -280,7 +292,14 @@ function App() {
 
     try {
       setFirebaseError('')
-      await signInWithPopup(auth, googleProvider)
+      const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+
+      if (isLocalhost) {
+        await signInWithPopup(auth, googleProvider)
+        return
+      }
+
+      await signInWithRedirect(auth, googleProvider)
     } catch (error) {
       const errorCode = error && typeof error === 'object' ? error.code : ''
 
@@ -292,6 +311,13 @@ function App() {
           setFirebaseError(redirectError instanceof Error ? redirectError.message : 'Google sign-in failed.')
           return
         }
+      }
+
+      if (errorCode === 'auth/unauthorized-domain') {
+        setFirebaseError(
+          'Firebase blocked sign-in because this domain is not authorized. Add your Vercel domain and localhost to Firebase Authentication > Settings > Authorized domains, then redeploy.',
+        )
+        return
       }
 
       setFirebaseError(error instanceof Error ? error.message : 'Google sign-in failed.')
