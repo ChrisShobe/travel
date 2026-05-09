@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth'
+import { onAuthStateChanged, signInWithPopup, signInWithRedirect, signOut } from 'firebase/auth'
 import DatePage from './pages/DatePage'
 import PlannerPage from './pages/PlannerPage'
 import DayPage from './pages/DayPage'
@@ -282,6 +282,18 @@ function App() {
       setFirebaseError('')
       await signInWithPopup(auth, googleProvider)
     } catch (error) {
+      const errorCode = error && typeof error === 'object' ? error.code : ''
+
+      if (errorCode === 'auth/popup-blocked' || errorCode === 'auth/operation-not-supported-in-this-environment') {
+        try {
+          await signInWithRedirect(auth, googleProvider)
+          return
+        } catch (redirectError) {
+          setFirebaseError(redirectError instanceof Error ? redirectError.message : 'Google sign-in failed.')
+          return
+        }
+      }
+
       setFirebaseError(error instanceof Error ? error.message : 'Google sign-in failed.')
     }
   }
