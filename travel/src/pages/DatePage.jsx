@@ -10,9 +10,18 @@ export default function DatePage({
   handleTripSetupSubmit,
   tripReady,
   navigate,
+  authUser,
+  handleSignOut,
 }) {
   return (
     <main className="app-shell">
+      <div className="account-bar">
+        <span>{authUser.displayName || authUser.email}</span>
+        <button type="button" className="ghost-btn" onClick={handleSignOut}>
+          Sign out
+        </button>
+      </div>
+
       <Header title="Set your trip dates">
         <p>
           Choose the start and end dates for your trip so the planner only shows

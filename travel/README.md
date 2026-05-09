@@ -1,16 +1,37 @@
-# React + Vite
+# Travel Planner
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This app uses Firebase Authentication with Google sign-in and Firestore to store each user's trip dates and stop data.
 
-Currently, two official plugins are available:
+## Firebase setup
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+1. Create a Firebase project.
+2. Enable Google sign-in in Authentication.
+3. Create a Firestore database.
+4. Add the following environment variables in a `.env` file at the project root:
 
-## React Compiler
+```bash
+VITE_FIREBASE_API_KEY=...
+VITE_FIREBASE_AUTH_DOMAIN=...
+VITE_FIREBASE_PROJECT_ID=...
+VITE_FIREBASE_STORAGE_BUCKET=...
+VITE_FIREBASE_MESSAGING_SENDER_ID=...
+VITE_FIREBASE_APP_ID=...
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+5. Restart the Vite dev server after creating or changing the env file.
 
-## Expanding the ESLint configuration
+## Data model
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+Trip data is stored in the Firestore document at `users/{uid}` with fields for:
+
+- `tripStartDate`
+- `tripEndDate`
+- `selectedDateKey`
+- `stopsByDate`
+
+## Development
+
+```bash
+npm install
+npm run dev
+```

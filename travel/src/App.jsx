@@ -1,8 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth'
 import DatePage from './pages/DatePage'
 import PlannerPage from './pages/PlannerPage'
 import DayPage from './pages/DayPage'
 import Header from './components/Header'
+import { auth, db, googleProvider, hasFirebaseConfig } from './lib/firebase'
+import { listenToUserTripData, saveUserTripData } from './lib/tripStore'
 
 function createDateKey(year, monthIndex, day) {
   const month = String(monthIndex + 1).padStart(2, '0')
@@ -109,16 +112,35 @@ function formatTripDayLabel(dateKey) {
   })
 }
 
+function stableStringify(value) {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(',')}]`
+  }
+
+  if (value && typeof value === 'object') {
+    const entries = Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`)
+    return `{${entries.join(',')}}`
+  }
+
+  return JSON.stringify(value)
+}
+
 function App() {
   const today = new Date()
+  const defaultSelectedDateKey = createDateKey(today.getFullYear(), today.getMonth(), today.getDate())
   const [tripStartDate, setTripStartDate] = useState('')
   const [tripEndDate, setTripEndDate] = useState('')
   const [tripReady, setTripReady] = useState(false)
   const [tripSetupError, setTripSetupError] = useState('')
-  const [selectedDateKey, setSelectedDateKey] = useState(
-    createDateKey(today.getFullYear(), today.getMonth(), today.getDate()),
-  )
+  const [selectedDateKey, setSelectedDateKey] = useState(defaultSelectedDateKey)
   const [stopsByDate, setStopsByDate] = useState({})
+  const [authUser, setAuthUser] = useState(null)
+  const [authReady, setAuthReady] = useState(!hasFirebaseConfig)
+  const [tripDataReady, setTripDataReady] = useState(!hasFirebaseConfig)
+  const [firebaseError, setFirebaseError] = useState('')
+  const syncedTripSignatureRef = useRef('')
 
   const [route, setRoute] = useState(() => {
     try {
@@ -128,46 +150,98 @@ function App() {
     }
   })
 
-  // Load saved trip data from localStorage on mount so direct URLs work
   useEffect(() => {
-    try {
-      const savedStart = localStorage.getItem('tripStartDate')
-      const savedEnd = localStorage.getItem('tripEndDate')
-      const savedStops = localStorage.getItem('stopsByDate')
-
-      if (savedStart) setTripStartDate(savedStart)
-      if (savedEnd) setTripEndDate(savedEnd)
-      if (savedStart) setSelectedDateKey(savedStart)
-      if (savedStops) setStopsByDate(JSON.parse(savedStops))
-
-      if (savedStart && savedEnd) {
-        setTripReady(true)
-      }
-    } catch (err) {
-      // ignore
+    if (!hasFirebaseConfig) {
+      setAuthReady(true)
+      setTripDataReady(true)
+      setFirebaseError('Add Firebase environment variables to enable Google sign-in and cloud sync.')
+      return undefined
     }
+
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setAuthUser(user)
+      setAuthReady(true)
+    })
+
+    return unsubscribe
   }, [])
 
-  // Persist trip data to localStorage when it changes
   useEffect(() => {
-    try {
-      if (tripStartDate) {
-        localStorage.setItem('tripStartDate', tripStartDate)
-      } else {
-        localStorage.removeItem('tripStartDate')
-      }
-
-      if (tripEndDate) {
-        localStorage.setItem('tripEndDate', tripEndDate)
-      } else {
-        localStorage.removeItem('tripEndDate')
-      }
-
-      localStorage.setItem('stopsByDate', JSON.stringify(stopsByDate || {}))
-    } catch (err) {
-      // ignore
+    if (!hasFirebaseConfig || !authReady) {
+      return undefined
     }
-  }, [tripStartDate, tripEndDate, stopsByDate])
+
+    if (!authUser) {
+      setTripStartDate('')
+      setTripEndDate('')
+      setSelectedDateKey(defaultSelectedDateKey)
+      setStopsByDate({})
+      setTripReady(false)
+      setTripDataReady(true)
+      syncedTripSignatureRef.current = ''
+      return undefined
+    }
+
+    setTripDataReady(false)
+
+    const unsubscribe = listenToUserTripData(db, authUser.uid, (tripData) => {
+      const savedStart = tripData?.tripStartDate ?? ''
+      const savedEnd = tripData?.tripEndDate ?? ''
+      const savedSelectedDateKey = tripData?.selectedDateKey ?? savedStart ?? defaultSelectedDateKey
+      const savedStopsByDate = tripData?.stopsByDate ?? {}
+      const incomingSignature = stableStringify({
+        tripStartDate: savedStart,
+        tripEndDate: savedEnd,
+        selectedDateKey: savedSelectedDateKey,
+        stopsByDate: savedStopsByDate,
+      })
+
+      if (incomingSignature === syncedTripSignatureRef.current) {
+        setTripDataReady(true)
+        return
+      }
+
+      syncedTripSignatureRef.current = incomingSignature
+
+      setTripStartDate(savedStart)
+      setTripEndDate(savedEnd)
+      setSelectedDateKey(savedSelectedDateKey)
+      setStopsByDate(savedStopsByDate)
+      setTripReady(Boolean(savedStart && savedEnd))
+      setTripDataReady(true)
+    })
+
+    return unsubscribe
+  }, [authReady, authUser, defaultSelectedDateKey])
+
+  useEffect(() => {
+    if (!hasFirebaseConfig || !authReady || !authUser || !tripDataReady) {
+      return undefined
+    }
+
+    const outgoingSignature = stableStringify({
+      tripStartDate,
+      tripEndDate,
+      selectedDateKey,
+      stopsByDate,
+    })
+
+    if (outgoingSignature === syncedTripSignatureRef.current) {
+      return undefined
+    }
+
+    syncedTripSignatureRef.current = outgoingSignature
+
+    saveUserTripData(db, authUser.uid, {
+      tripStartDate,
+      tripEndDate,
+      selectedDateKey,
+      stopsByDate,
+    }).catch(() => {
+      setFirebaseError('Could not save trip data to Firebase. Check your project settings and Firestore rules.')
+    })
+    return undefined
+  }, [authReady, authUser, tripDataReady, tripStartDate, tripEndDate, selectedDateKey, stopsByDate])
 
   useEffect(() => {
     const onPop = () => setRoute(window.location.pathname)
@@ -179,6 +253,28 @@ function App() {
     if (window.location.pathname !== path) {
       window.history.pushState({}, '', path)
       setRoute(path)
+    }
+  }
+
+  async function handleGoogleSignIn() {
+    if (!hasFirebaseConfig) return
+
+    try {
+      setFirebaseError('')
+      await signInWithPopup(auth, googleProvider)
+    } catch (error) {
+      setFirebaseError(error instanceof Error ? error.message : 'Google sign-in failed.')
+    }
+  }
+
+  async function handleSignOut() {
+    if (!hasFirebaseConfig) return
+
+    try {
+      await signOut(auth)
+      syncedTripSignatureRef.current = ''
+    } catch (error) {
+      setFirebaseError(error instanceof Error ? error.message : 'Sign out failed.')
     }
   }
 
@@ -280,6 +376,95 @@ function App() {
   }
 
   const selectedDateStops = stopsByDate[selectedDateKey] ?? []
+  const isKnownRoute = route === '/' || route === '/planner' || route === '/day'
+
+  if (!hasFirebaseConfig) {
+    return (
+      <main className="app-shell">
+        <Header title="Firebase setup required">
+          <p>
+            Add your Firebase environment variables before using Google sign-in and cloud sync.
+          </p>
+        </Header>
+
+        <section className="setup-card" aria-label="Firebase setup notice">
+          <p className="setup-error">
+            Missing Firebase config. Create a <strong>.env</strong> file with the Vite Firebase
+            variables, then restart the dev server.
+          </p>
+        </section>
+      </main>
+    )
+  }
+
+  if (!authReady) {
+    return (
+      <main className="app-shell">
+        <section className="setup-card" aria-label="Loading Firebase state">
+          <p>Loading your Firebase session...</p>
+        </section>
+      </main>
+    )
+  }
+
+  if (!authUser) {
+    return (
+      <main className="app-shell">
+        <Header title="Sign in to your trip planner">
+          <p>Use Google sign-in to sync trip dates and stop details to Firebase.</p>
+        </Header>
+
+        <section className="setup-card auth-card" aria-label="Google sign in">
+          <p className="auth-copy">
+            Your trip information will be saved to your Firebase account instead of the browser.
+          </p>
+          <button type="button" className="primary-btn" onClick={handleGoogleSignIn}>
+            Continue with Google
+          </button>
+          {firebaseError && <p className="setup-error">{firebaseError}</p>}
+        </section>
+      </main>
+    )
+  }
+
+  if (!tripDataReady) {
+    return (
+      <main className="app-shell">
+        <section className="setup-card" aria-label="Loading trip data">
+          <p>Loading your trip data from Firebase...</p>
+        </section>
+      </main>
+    )
+  }
+
+  if (!isKnownRoute) {
+    return (
+      <main className="app-shell">
+        <div className="account-bar">
+          <span>{authUser.displayName || authUser.email}</span>
+          <button type="button" className="ghost-btn" onClick={handleSignOut}>
+            Sign out
+          </button>
+        </div>
+
+        <section className="planner-card">
+          <h2>404 — Page not found</h2>
+          <p>
+            The page <strong>{route}</strong> does not exist.
+          </p>
+          <div className="notfound-actions">
+            <button
+              type="button"
+              className="inline-photo-upload back-to-days"
+              onClick={() => navigate('/planner')}
+            >
+              Back to planner
+            </button>
+          </div>
+        </section>
+      </main>
+    )
+  }
 
   if (!tripReady || route === '/') {
     return (
@@ -292,12 +477,21 @@ function App() {
         handleTripSetupSubmit={handleTripSetupSubmit}
         tripReady={tripReady}
         navigate={navigate}
+        authUser={authUser}
+        handleSignOut={handleSignOut}
       />
     )
   }
 
   return (
     <main className="app-shell">
+      <div className="account-bar">
+        <span>{authUser.displayName || authUser.email}</span>
+        <button type="button" className="ghost-btn" onClick={handleSignOut}>
+          Sign out
+        </button>
+      </div>
+
       {route === '/day' && (
         <Header title={`Stops for ${selectedDateLabel}`}>
           <p>Manage stops for {selectedDateLabel}: add times, durations, notes, and photos.</p>

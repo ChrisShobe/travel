@@ -82,6 +82,30 @@ p {
   max-width: 520px;
 }
 
+.auth-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.auth-copy {
+  color: #4c4238;
+}
+
+.account-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 0.95rem;
+  border: 1px solid #e2d3bf;
+  border-radius: 16px;
+  background: rgba(255, 253, 249, 0.9);
+  box-shadow: 0 8px 18px rgba(31, 42, 56, 0.06);
+  color: #4c4238;
+  font-weight: 600;
+}
+
 .setup-form {
   display: flex;
   flex-direction: column;
