@@ -127,6 +127,15 @@ function stableStringify(value) {
   return JSON.stringify(value)
 }
 
+function normalizePath(pathname) {
+  if (!pathname) {
+    return '/'
+  }
+
+  const trimmed = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname
+  return trimmed || '/'
+}
+
 function App() {
   const today = new Date()
   const defaultSelectedDateKey = createDateKey(today.getFullYear(), today.getMonth(), today.getDate())
@@ -144,7 +153,7 @@ function App() {
 
   const [route, setRoute] = useState(() => {
     try {
-      return window.location.pathname || '/'
+      return normalizePath(window.location.pathname || '/')
     } catch (e) {
       return '/'
     }
@@ -244,15 +253,25 @@ function App() {
   }, [authReady, authUser, tripDataReady, tripStartDate, tripEndDate, selectedDateKey, stopsByDate])
 
   useEffect(() => {
-    const onPop = () => setRoute(window.location.pathname)
+    const onPop = () => setRoute(normalizePath(window.location.pathname))
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
   }, [])
 
+  useEffect(() => {
+    // Send authenticated users with an initialized trip directly to the planner.
+    if (authUser && tripDataReady && tripReady && route === '/') {
+      navigate('/planner')
+    }
+  }, [authUser, tripDataReady, tripReady, route])
+
   function navigate(path) {
-    if (window.location.pathname !== path) {
+    const normalizedPath = normalizePath(path)
+    const currentPath = normalizePath(window.location.pathname)
+
+    if (currentPath !== normalizedPath) {
       window.history.pushState({}, '', path)
-      setRoute(path)
+      setRoute(normalizedPath)
     }
   }
 
