@@ -15,7 +15,17 @@ export const hasFirebaseConfig = Object.values(firebaseConfig).every(Boolean)
 
 const app = hasFirebaseConfig ? (getApps().length > 0 ? getApp() : initializeApp(firebaseConfig)) : null
 
-export const auth = app ? (getApps().length > 0 ? getAuth(app) : initializeAuth(app, { persistence: browserLocalPersistence })) : null
+let auth = null
+
+if (app) {
+  try {
+    auth = initializeAuth(app, { persistence: browserLocalPersistence })
+  } catch (error) {
+    auth = getAuth(app)
+  }
+}
+
+export { auth }
 export const db = app ? getFirestore(app) : null
 
 export const googleProvider = new GoogleAuthProvider()
