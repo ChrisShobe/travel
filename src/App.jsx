@@ -156,6 +156,7 @@ function App() {
   const [tripDataReady, setTripDataReady] = useState(!hasFirebaseConfig)
   const [firebaseError, setFirebaseError] = useState('')
   const syncedTripSignatureRef = useRef('')
+  const hasAutoRedirectedRef = useRef(false)
 
   const [route, setRoute] = useState(() => {
     try {
@@ -173,18 +174,34 @@ function App() {
       return undefined
     }
 
-    getRedirectResult(auth).catch((error) => {
-      if (error instanceof Error) {
-        setFirebaseError(error.message)
+    let unsubscribe = () => {}
+
+    ;(async () => {
+      try {
+        await authPersistenceReady
+      } catch (e) {
+        // ignore persistence failures; continue to attempt redirect/result handling
       }
-    })
 
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setAuthUser(user)
-      setAuthReady(true)
-    })
+      try {
+        await getRedirectResult(auth)
+      } catch (error) {
+        if (error instanceof Error) setFirebaseError(error.message)
+      }
 
-    return unsubscribe
+      unsubscribe = onAuthStateChanged(auth, (user) => {
+        setAuthUser(user)
+        setAuthReady(true)
+      })
+    })()
+
+    return () => {
+      try {
+        if (typeof unsubscribe === 'function') unsubscribe()
+      } catch (e) {
+        // ignore
+      }
+    }
   }, [])
 
   useEffect(() => {
@@ -200,6 +217,7 @@ function App() {
       setTripReady(false)
       setTripDataReady(true)
       syncedTripSignatureRef.current = ''
+      hasAutoRedirectedRef.current = false
       return undefined
     }
 
@@ -271,8 +289,9 @@ function App() {
   }, [])
 
   useEffect(() => {
-    // Send authenticated users with an initialized trip directly to the planner.
-    if (authUser && tripDataReady && tripReady && route === '/') {
+    // Send authenticated users with an initialized trip directly to the planner on first load.
+    if (authUser && tripDataReady && tripReady && route === '/' && !hasAutoRedirectedRef.current) {
+      hasAutoRedirectedRef.current = true
       navigate('/planner')
     }
   }, [authUser, tripDataReady, tripReady, route])
